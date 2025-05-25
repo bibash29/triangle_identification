@@ -55,7 +55,7 @@ class _TriangleIdentifierState extends State<TriangleIdentifier>
       });
       
       _animationController = AnimationController(
-        duration: const Duration(seconds: 8),
+        duration: const Duration(seconds: 12),
         vsync: this,
       )..repeat();
 
