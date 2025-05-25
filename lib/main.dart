@@ -24,7 +24,7 @@ class TriangleIdentifier extends StatefulWidget {
 }
 
 class _TriangleIdentifierState extends State<TriangleIdentifier> 
-    with SingleTickerProviderStateMixin { // Fixed: Added proper mixin
+    with SingleTickerProviderStateMixin {
   final TextEditingController _side1Controller = TextEditingController();
   final TextEditingController _side2Controller = TextEditingController();
   final TextEditingController _side3Controller = TextEditingController();
@@ -34,8 +34,12 @@ class _TriangleIdentifierState extends State<TriangleIdentifier>
   bool _isValid = false;
   double _rotationX = 0;
   double _rotationY = 0;
+  double _touchRotationX = 0;
+  double _touchRotationY = 0;
+  bool _isDragging = false;
+  Offset? _lastDragPosition;
 
-  late AnimationController _animationController; // Fixed: Made late
+  late AnimationController _animationController;
 
   @override
   void initState() {
@@ -52,14 +56,14 @@ class _TriangleIdentifierState extends State<TriangleIdentifier>
       
       _animationController = AnimationController(
         duration: const Duration(seconds: 8),
-        vsync: this, // This now works correctly with SingleTickerProviderStateMixin
+        vsync: this,
       )..repeat();
 
       _animationController.addListener(() {
         final double progress = _animationController.value;
         setState(() {
-          _rotationX = sin(progress * pi * 2) * pi / 4;
-          _rotationY = cos(progress * pi * 2) * pi / 4;
+          _rotationX = sin(progress * pi * 2) * pi;
+          _rotationY = cos(progress * pi * 2) * pi;
         });
       });
     });
@@ -105,31 +109,32 @@ class _TriangleIdentifierState extends State<TriangleIdentifier>
             Text(_result),
             Text(_triangleType),
             SizedBox(height: 40),
-            Transform(
-              transform: Matrix4.identity()
-                ..setEntry(3, 2, 0.001) // Perspective
-                ..rotateX(_rotationX)
-                ..rotateY(_rotationY),
-              alignment: Alignment.center,
-              child: Container(
-                width: 300,
-                height: 300,
-                color: Colors.transparent,
-                child: CustomPaint(
-                  painter: TrianglePainter(
-                    isValid: _isValid,
-                    triangleType: _triangleType,
-                    side1: _isValid ? double.tryParse(_side1Controller.text) : null,
-                    side2: _isValid ? double.tryParse(_side2Controller.text) : null,
-                    side3: _isValid ? double.tryParse(_side3Controller.text) : null,
+            GestureDetector(
+              onPanStart: _onDragStart,
+              onPanUpdate: _onDragUpdate,
+              onPanEnd: _onDragEnd,
+              child: Transform(
+                transform: Matrix4.identity()
+                  ..setEntry(3, 2, 0.001) // Perspective
+                  ..rotateX(_rotationX + _touchRotationX)
+                  ..rotateY(_rotationY + _touchRotationY)
+                  ..translate(0.0, 0.0, 50.0), // Move slightly forward for better 3D effect
+                alignment: Alignment.center,
+                child: Container(
+                  width: 300,
+                  height: 300,
+                  color: Colors.transparent,
+                  child: CustomPaint(
+                    painter: TrianglePainter(
+                      isValid: _isValid,
+                      triangleType: _triangleType,
+                      side1: _isValid ? double.tryParse(_side1Controller.text) : null,
+                      side2: _isValid ? double.tryParse(_side2Controller.text) : null,
+                      side3: _isValid ? double.tryParse(_side3Controller.text) : null,
+                    ),
                   ),
                 ),
               ),
-            ),
-            SizedBox(height: 20),
-            Text(
-              'Rotate the triangle to see its properties',
-              style: TextStyle(fontStyle: FontStyle.italic),
             ),
           ],
         ),
@@ -181,6 +186,29 @@ class _TriangleIdentifierState extends State<TriangleIdentifier>
     if (a == b || b == c || c == a) return 'Isosceles';
     return 'Scalene';
   }
+
+  void _onDragStart(DragStartDetails details) {
+    _isDragging = true;
+    _lastDragPosition = details.globalPosition;
+  }
+
+  void _onDragUpdate(DragUpdateDetails details) {
+    if (!_isDragging) return;
+
+    final Offset currentPos = details.globalPosition;
+    final Offset delta = currentPos - _lastDragPosition!;
+    
+    setState(() {
+      _touchRotationX += delta.dy * 0.02;
+      _touchRotationY += delta.dx * 0.02;
+      _lastDragPosition = currentPos;
+    });
+  }
+
+  void _onDragEnd(DragEndDetails details) {
+    _isDragging = false;
+    _lastDragPosition = null;
+  }
 }
 
 class TrianglePainter extends CustomPainter {
@@ -223,26 +251,70 @@ class TrianglePainter extends CustomPainter {
     double maxSide = max(max(side1!, side2!), side3!);
     double scale = min(size.width, size.height) / (maxSide * 2.5); // Leave some padding
 
-    // Calculate angles using law of cosines
-    double angleA = acos((pow(side2!, 2) + pow(side3!, 2) - pow(side1!, 2)) / (2 * side2! * side3!));
-    double angleB = acos((pow(side1!, 2) + pow(side3!, 2) - pow(side2!, 2)) / (2 * side1! * side3!));
-    double angleC = pi - angleA - angleB;
+    // Determine which side to use as base (longest side)
+    double baseSide;
+    double otherSide1;
+    double otherSide2;
+    double angle1;
+    double angle2;
+
+    if (side1! >= side2! && side1! >= side3!) {
+      // side1 is longest
+      baseSide = side1!;
+      otherSide1 = side2!;
+      otherSide2 = side3!;
+      angle1 = acos((pow(side2!, 2) + pow(side1!, 2) - pow(side3!, 2)) / (2 * side2! * side1!));
+      angle2 = acos((pow(side3!, 2) + pow(side1!, 2) - pow(side2!, 2)) / (2 * side3! * side1!));
+    } else if (side2! >= side1! && side2! >= side3!) {
+      // side2 is longest
+      baseSide = side2!;
+      otherSide1 = side1!;
+      otherSide2 = side3!;
+      angle1 = acos((pow(side1!, 2) + pow(side2!, 2) - pow(side3!, 2)) / (2 * side1! * side2!));
+      angle2 = acos((pow(side3!, 2) + pow(side2!, 2) - pow(side1!, 2)) / (2 * side3! * side2!));
+    } else {
+      // side3 is longest
+      baseSide = side3!;
+      otherSide1 = side1!;
+      otherSide2 = side2!;
+      angle1 = acos((pow(side1!, 2) + pow(side3!, 2) - pow(side2!, 2)) / (2 * side1! * side3!));
+      angle2 = acos((pow(side2!, 2) + pow(side3!, 2) - pow(side1!, 2)) / (2 * side2! * side3!));
+    }
 
     // Calculate points using scaled sides and angles
     double centerX = size.width / 2;
     double centerY = size.height / 2;
 
-    return [
-      Offset(centerX, centerY), // Start at center
-      Offset(
-        centerX + side2! * scale * cos(angleC),
-        centerY + side2! * scale * sin(angleC)
-      ),
-      Offset(
-        centerX + side3! * scale * cos(angleC + angleB),
-        centerY + side3! * scale * sin(angleC + angleB)
-      ),
-    ];
+    Offset p1 = Offset(centerX, centerY);
+    Offset p2 = Offset(
+      centerX + baseSide * scale,
+      centerY
+    );
+    Offset p3 = Offset(
+      centerX + otherSide1 * scale * cos(angle1),
+      centerY + otherSide1 * scale * sin(angle1)
+    );
+
+    // Special case for right-angled triangles
+    if (triangleType.contains('Right Angled')) {
+      // Find the longest side (hypotenuse)
+      double hypotenuse = max(max(side1!, side2!), side3!);
+      otherSide1 = side1! == hypotenuse ? side2! : side1!;
+      otherSide2 = side2! == hypotenuse ? side3! : side2!;
+      
+      // Calculate points for right angle
+      p1 = Offset(centerX, centerY);
+      p2 = Offset(
+        centerX + otherSide1 * scale,
+        centerY
+      );
+      p3 = Offset(
+        centerX,
+        centerY + otherSide2 * scale
+      );
+    }
+
+    return [p1, p2, p3];
   }
 
   @override
