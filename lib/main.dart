@@ -119,9 +119,17 @@ class _TriangleIdentifierState extends State<TriangleIdentifier>
                   painter: TrianglePainter(
                     isValid: _isValid,
                     triangleType: _triangleType,
+                    side1: _isValid ? double.tryParse(_side1Controller.text) : null,
+                    side2: _isValid ? double.tryParse(_side2Controller.text) : null,
+                    side3: _isValid ? double.tryParse(_side3Controller.text) : null,
                   ),
                 ),
               ),
+            ),
+            SizedBox(height: 20),
+            Text(
+              'Rotate the triangle to see its properties',
+              style: TextStyle(fontStyle: FontStyle.italic),
             ),
           ],
         ),
@@ -178,15 +186,21 @@ class _TriangleIdentifierState extends State<TriangleIdentifier>
 class TrianglePainter extends CustomPainter {
   final bool isValid;
   final String triangleType;
+  final double? side1;
+  final double? side2;
+  final double? side3;
 
   TrianglePainter({
     required this.isValid,
     required this.triangleType,
+    this.side1,
+    this.side2,
+    this.side3,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (!isValid) return;
+    if (!isValid || side1 == null || side2 == null || side3 == null) return;
 
     Paint paint = Paint()
       ..color = Colors.blue
@@ -205,19 +219,37 @@ class TrianglePainter extends CustomPainter {
   }
 
   List<Offset> _calculateTrianglePoints(Size size) {
+    // Calculate scale factor to fit triangle in view
+    double maxSide = max(max(side1!, side2!), side3!);
+    double scale = min(size.width, size.height) / (maxSide * 2.5); // Leave some padding
+
+    // Calculate angles using law of cosines
+    double angleA = acos((pow(side2!, 2) + pow(side3!, 2) - pow(side1!, 2)) / (2 * side2! * side3!));
+    double angleB = acos((pow(side1!, 2) + pow(side3!, 2) - pow(side2!, 2)) / (2 * side1! * side3!));
+    double angleC = pi - angleA - angleB;
+
+    // Calculate points using scaled sides and angles
     double centerX = size.width / 2;
     double centerY = size.height / 2;
-    double radius = min(size.width, size.height) / 3;
 
     return [
-      Offset(centerX, centerY - radius),
-      Offset(centerX + radius * sqrt(3), centerY + radius),
-      Offset(centerX - radius * sqrt(3), centerY + radius),
+      Offset(centerX, centerY), // Start at center
+      Offset(
+        centerX + side2! * scale * cos(angleC),
+        centerY + side2! * scale * sin(angleC)
+      ),
+      Offset(
+        centerX + side3! * scale * cos(angleC + angleB),
+        centerY + side3! * scale * sin(angleC + angleB)
+      ),
     ];
   }
 
   @override
   bool shouldRepaint(TrianglePainter oldDelegate) {
-    return oldDelegate.isValid != isValid;
+    return oldDelegate.isValid != isValid ||
+           oldDelegate.side1 != side1 ||
+           oldDelegate.side2 != side2 ||
+           oldDelegate.side3 != side3;
   }
 }
